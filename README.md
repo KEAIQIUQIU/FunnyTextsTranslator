@@ -1,5 +1,65 @@
-# FunnyTextsTranslator
-## Run convert.py to try this project.
-A project which can translate sentences into various languages for many times in order to provide funny texts.
-There are some samples in the folder "SampleTexts" for you to try.
-The result will be "output.md".
+# FunnyTextsTranslator 🌍📝
+
+**FunnyTextsTranslator** 是一个有趣的文本翻译项目，它通过多轮随机语言翻译将输入文本转化为令人捧腹的新内容。基于"翻译链"原理，文本在40轮不同语言的随机翻译后最终回到原始语言（中文），创造出意想不到的搞笑效果！
+
+## ✨ 核心功能
+
+1. **文本预处理**
+   - 智能移除所有标点符号（中英文皆可）
+   - 清除所有空白字符
+   - 保留中文、字母和数字内容
+
+2. **多轮翻译引擎**
+   - 40轮随机语言路径翻译（支持15种语言）
+   - 智能分块处理长文本（每块80字符）
+   - 三重翻译引擎保障（阿里/谷歌/Bing）
+   - 失败重试机制（最多3次重试）
+   - 人工干预选项（翻译失败时）
+
+3. **结果输出**
+   - 生成完整处理报告
+   - 原始文本/预处理文本/最终结果对比
+   - Markdown格式输出
+
+## 📦 安装与使用
+
+### 安装依赖
+```bash
+pip install translate translators
+```
+
+### 运行程序
+```bash
+python convert.py
+```
+
+### 使用流程
+1. 运行程序后输入文本（空行结束输入）
+2. 系统自动执行：
+   - 文本预处理（去空格/标点）
+   - 40轮随机语言翻译
+   - 结果保存到`output.md`
+3. 查看最终生成的搞笑文本！
+
+## 🌍 支持语言
+中文(zh)、英语(en)、阿拉伯语(ar)、俄语(ru)、法语(fr)、德语(de)、西班牙语(es)、葡萄牙语(pt)、意大利语(it)、日语(ja)、韩语(ko)、希腊语(el)、荷兰语(nl)、印地语(hi)、土耳其语(tr)
+
+## 💡 技术亮点
+
+- **智能分块**：长文本分割处理，保证翻译质量
+- **随机路径**：每次运行生成独特的语言转换路径
+- **错误处理**：提供人工干预接口应对极端情况
+
+## 📂 文件结构
+```
+Software/1.1/
+├── convert.py            # 主程序
+├── translate_core.py     # 翻译引擎核心（多轮翻译实现）
+```
+
+## ⚠ 注意事项
+1. 需要稳定的网络连接（调用在线翻译API）
+3. 结果可能包含不可预测的搞笑内容
+4. 建议输入短文本（<500字符）获得最佳效果
+
+**让您的文字经历一场环球旅行，收获意想不到的惊喜！** 🚀
