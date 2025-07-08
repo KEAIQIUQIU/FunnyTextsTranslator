@@ -1,9 +1,11 @@
-import argostranslate.package
-import time
-import sys
 
-# 增加到10种常用语言
-COMMON_LANGUAGES = ['es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'ar']
+import sys
+import os
+import gui_core
+import subprocess
+import time
+
+COMMON_LANGUAGES = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'ar']
 
 # 构建所有语言与英语的互译对
 AVAILABLE_PAIRS = []
@@ -17,7 +19,6 @@ def download_models():
     argostranslate.package.update_package_index()
     print("包索引更新完成！")
 
-    # 一次性获取所有可用包
     print("获取可用语言包列表...")
     all_packages = argostranslate.package.get_available_packages()
     print(f"找到 {len(all_packages)} 个可用语言包")
@@ -42,7 +43,6 @@ def download_models():
     # 下载进度跟踪
     total = len(to_download)
     downloaded = 0
-    start_time = time.time()
 
     # 下载所有需要的包
     for package in to_download:
@@ -51,7 +51,6 @@ def download_models():
         sys.stdout.flush()
 
         try:
-            # 直接尝试安装（跳过版本检查）
             package.install()
             print("✓ 完成")
         except Exception as e:
@@ -60,4 +59,14 @@ def download_models():
     print('常用语言模型下载完成！')
 
 if __name__ == "__main__":
-    download_models()
+    print("下载依赖和语言包？y/n（初次启动必须下载，后续可跳过）")
+    option = input()
+    if option == 'y':
+        os.system("pip install -r requirements.txt")
+    import argostranslate.package
+    if option == 'y':
+        download_models()
+    print("正在启动服务...")
+    subprocess.Popen('libretranslate', shell=True)
+    time.sleep(5)
+    gui_core.main()
