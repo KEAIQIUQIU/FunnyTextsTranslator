@@ -5,6 +5,9 @@ import os
 import re
 import string
 
+# 设置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 # 从LibreTranslate服务获取支持的语言列表
 def get_supported_languages(base_url="http://127.0.0.1:5000"):
     try:
@@ -30,6 +33,35 @@ class LibreTranslator:
             "Content-Type": "application/json",
             "Accept": "application/json"
         })
+
+    def detect_language(self, text):
+        """检测文本语言"""
+        if not text.strip():
+            return None
+            
+        payload = {
+            "q": text
+        }
+
+        try:
+            response = self.session.post(
+                f"{self.base_url}/detect",
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                logging.error(f"语言检测请求失败: {response.status_code} - {response.text}")
+                return None
+                
+            result = response.json()
+            if result and len(result) > 0:
+                # 返回置信度最高的语言
+                return result[0]['language']
+            return None
+        except Exception as e:
+            logging.error(f"语言检测失败: {str(e)}")
+            return None
 
     def translate(self, text, source_lang, target_lang):
         # 起点和终点相同跳过翻译
@@ -65,55 +97,8 @@ class LibreTranslator:
             logging.error(f"翻译失败: {str(e)}")
             return text
 
-def remove_punctuation(text):
-    """移除文本中的非必要标点符号，但保留基本句子结构"""
-    # 保留基本标点：句号、逗号、问号、感叹号
-    text = re.sub(r'[^\w\s\u4e00-\u9fff.,!?。，！？]', '', text)
-    return text
-
-def split_text(text, max_length=100, language='en'):
-    """将文本按句子分割，对于长句子再进一步分块"""
-    # 按句子分割（简单实现，可根据需要改进）
-    sentences = re.split(r'([.!?。！？])', text)
-    sentences = [''.join(i) for i in zip(sentences[0::2], sentences[1::2])]
-    
-    chunks = []
-    for sentence in sentences:
-        # 如果句子太长，再进一步分割
-        if len(sentence) > max_length:
-            if language in ['zh-Hans', 'zh-Hant']:
-                # 中文按长度分割
-                start = 0
-                while start < len(sentence):
-                    end = start + max_length
-                    chunk = sentence[start:end]
-                    chunks.append(chunk)
-                    start = end
-            else:
-                # 非中文按单词分割
-                words = sentence.split()
-                current_chunk = []
-                current_length = 0
-                
-                for word in words:
-                    if current_length + len(word) + 1 <= max_length:
-                        current_chunk.append(word)
-                        current_length += len(word) + 1
-                    else:
-                        chunks.append(" ".join(current_chunk))
-                        current_chunk = [word]
-                        current_length = len(word)
-                
-                if current_chunk:
-                    chunks.append(" ".join(current_chunk))
-        else:
-            chunks.append(sentence)
-            
-    return chunks
-
-def trans(original_text, loops=40, progress_callback=None, source_lang='en', target_lang='zh-Hans', 
-          chunk_size=100, chunk_progress_callback=None):
-    translator = LibreTranslator()
+def trans(original_text, loops=40, progress_callback=None, source_lang='auto', target_lang='zh-Hans'):
+    libre_translator = LibreTranslator()
     
     # 获取当前支持的语言列表
     available_languages = get_supported_languages()
@@ -121,83 +106,83 @@ def trans(original_text, loops=40, progress_callback=None, source_lang='en', tar
         logging.error("无法获取支持的语言列表")
         return original_text, [("错误", "无法获取支持的语言列表")]
 
-    # 确保源语言和目标语言在支持的语言列表中
-    if source_lang not in available_languages:
-        logging.warning(f"源语言 {source_lang} 不在支持的语言列表中，使用默认值 'en'")
-        source_lang = 'en'
-    
-    if target_lang not in available_languages:
-        logging.warning(f"目标语言 {target_lang} 不在支持的语言列表中，使用默认值 'zh-Hans'")
-        target_lang = 'zh-Hans'
-
-    # 生成语言路径
-    language_path = [source_lang]
-    prev_lang = language_path[0]
-    
-    # 生成中间轮次的语言路径（排除中文）
-    for i in range(loops - 1):
-        # 排除当前语言和中文（中间轮次不允许中文）
-        available_next_langs = [lang for lang in available_languages 
-                               if lang != prev_lang and lang != 'zh-Hans' and lang != 'zh-Hant']
-        
-        # 如果没有可用语言，回退到所有语言（除了当前语言）
-        if not available_next_langs:
-            available_next_langs = [lang for lang in available_languages if lang != prev_lang]
-            
-        # 如果仍然没有可用语言，回退到所有语言
-        if not available_next_langs:
-            available_next_langs = available_languages
-            
-        next_lang = random.choice(available_next_langs)
-        language_path.append(next_lang)
-        prev_lang = next_lang
-        
-    # 添加目标语言到路径末尾
-    language_path.append(target_lang)
+    # 如果源语言是 'auto'，则检测语言
+    if source_lang == 'auto':
+        detected_lang = libre_translator.detect_language(original_text)
+        if detected_lang is None:
+            # 如果检测失败，使用默认语言
+            detected_lang = 'en'
+            logging.warning(f"语言检测失败，使用默认语言: {detected_lang}")
+        source_lang = detected_lang
 
     # 记录所有翻译步骤
     all_steps = [("原始文本", original_text)]
     current_text = original_text
+    previous_lang = source_lang
+
+    # 检查最终目标是否为中文
+    final_target_is_chinese = target_lang in ['zh', 'zh-Hans', 'zh-Hant']
 
     # 执行多轮翻译
     for round_idx in range(loops):
-        from_lang = language_path[round_idx]
-        to_lang = language_path[round_idx + 1]
+        # 检测当前文本的语言
+        detected_lang = libre_translator.detect_language(current_text)
+        if detected_lang is None:
+            # 如果检测失败，使用上一轮的目标语言
+            detected_lang = previous_lang
+            logging.warning(f"语言检测失败，使用上一轮语言: {detected_lang}")
 
-        # 如果不是最后一轮，移除标点符号
-        if round_idx < loops - 1:
-            current_text = remove_punctuation(current_text)
-
-        # 分块翻译处理
-        chunks = split_text(current_text, chunk_size, from_lang)
-        total_chunks = len(chunks)
-        translated_chunks = []
-        
-        # 在每轮开始时重置块进度显示
-        if chunk_progress_callback:
-            chunk_progress_callback(0, total_chunks)  # 重置为0
-        
-        for chunk_idx, chunk in enumerate(chunks):
-            # 执行翻译
-            translated_chunk = translator.translate(chunk, from_lang, to_lang)
-            translated_chunks.append(translated_chunk)
+        # 确定目标语言
+        if round_idx == loops - 1:
+            # 最后一轮，使用指定的目标语言
+            to_lang = target_lang
             
-            # 调用块进度回调
-            if chunk_progress_callback:
-                chunk_progress_callback(chunk_idx + 1, total_chunks)
-        
-        # 拼接所有块的翻译结果
-        current_text = "".join(translated_chunks)
+            # 检查最后一轮的目标语言是否与检测语言相同
+            if detected_lang == to_lang:
+                # 如果相同，选择一个新的目标语言
+                other_langs = [lang for lang in available_languages if lang != detected_lang]
+                if other_langs:
+                    to_lang = random.choice(other_langs)
+                    logging.warning(f"最后一轮检测语言和目标语言相同，已自动更改为: {to_lang}")
+                else:
+                    # 如果没有其他语言可用，使用英语作为默认
+                    to_lang = 'en'
+                    logging.warning("最后一轮检测语言和目标语言相同，且无其他语言可用，使用英语作为目标语言")
+                    
+        elif round_idx == loops - 2 and final_target_is_chinese:
+            # 如果最终目标是中文，倒数第二轮必须是英文
+            to_lang = 'en'
+        else:
+            # 中间轮次，绝对不允许使用中文
+            # 从可用语言中排除所有中文变体
+            non_chinese_langs = [lang for lang in available_languages 
+                               if not lang.startswith('zh')]
+            
+            # 如果是中文，强制转换为英文
+            if detected_lang in ['zh', 'zh-Hans', 'zh-Hant']:
+                to_lang = 'en'
+            else:
+                # 其他语言，随机选择非当前语言且非中文的语言
+                other_langs = [lang for lang in non_chinese_langs if lang != detected_lang]
+                to_lang = random.choice(other_langs) if other_langs else 'en'
 
-        all_steps.append((f"{from_lang}→{to_lang}", current_text))
+        # 使用LibreTranslate进行翻译
+        current_text = libre_translator.translate(current_text, detected_lang, to_lang)
+
+        all_steps.append((f"{detected_lang}→{to_lang}", current_text))
+        previous_lang = to_lang  # 保存当前目标语言作为下一轮的源语言
 
         # 实时回调进度
         if progress_callback:
+            # 构建语言路径
+            lang_path = [step[0].split('→')[0] for step in all_steps[1:]]
+            lang_path.append(to_lang)  # 添加最后一轮的目标语言
+            
             progress_callback(
                 round_idx + 1,
                 loops,
                 current_text,
-                language_path[:round_idx + 2]
+                lang_path
             )
 
     return current_text, all_steps

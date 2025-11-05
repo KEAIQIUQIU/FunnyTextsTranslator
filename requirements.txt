@@ -1,2 +1,3 @@
 argostranslate
 libretranslate
+requests
